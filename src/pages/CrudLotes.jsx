@@ -155,12 +155,7 @@ const CrudLotes = () => {
           </div>
         </div>
 
-        {/* Feedback */}
-        {message.text && (
-          <div className={`alert ${message.type === "danger" ? "alert-danger" : "alert-success"}`}>
-            <span>{message.type === "danger" ? "⚠️" : "✅"} {message.text}</span>
-          </div>
-        )}
+
 
         <div className="crud-grid">
           {/* Listagem (Read) */}
@@ -235,7 +230,14 @@ const CrudLotes = () => {
               {editingId ? "Editar Lote" : "Iniciar Novo Lote"}
             </h2>
 
-            <form onSubmit={handleSave}>
+            {/* Feedback */}
+            {message.text && (
+              <div className={`alert ${message.type === "danger" ? "alert-danger" : "alert-success"}`}>
+                <span>{message.type === "danger" ? "⚠️" : "✅"} {message.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSave} noValidate>
               <div className="form-group">
                 <label className="form-label" htmlFor="batch-code">Código do Lote</label>
                 <input

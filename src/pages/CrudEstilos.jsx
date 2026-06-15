@@ -111,12 +111,7 @@ const CrudEstilos = () => {
           </div>
         </div>
 
-        {/* Alertas */}
-        {message.text && (
-          <div className={`alert ${message.type === "danger" ? "alert-danger" : "alert-success"}`}>
-            <span>{message.type === "danger" ? "⚠️" : "✅"} {message.text}</span>
-          </div>
-        )}
+
 
         <div className="crud-grid">
           {/* Listagem (Read) */}
@@ -166,7 +161,14 @@ const CrudEstilos = () => {
               {editingId ? "Editar Estilo" : "Cadastrar Estilo"}
             </h2>
 
-            <form onSubmit={handleSave}>
+            {/* Feedback */}
+            {message.text && (
+              <div className={`alert ${message.type === "danger" ? "alert-danger" : "alert-success"}`}>
+                <span>{message.type === "danger" ? "⚠️" : "✅"} {message.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSave} noValidate>
               <div className="form-group">
                 <label className="form-label" htmlFor="style-name">Nome do Estilo</label>
                 <input

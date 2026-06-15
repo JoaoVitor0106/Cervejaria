@@ -4,17 +4,17 @@ import { subscribeToCollection, addDocument, updateDocument, deleteDocument } fr
 const CrudCervejas = () => {
   const [beers, setBeers] = useState([]);
   const [styles, setStyles] = useState([]);
-  
+
   // Estados do Formulário
   const [nome, setNome] = useState("");
   const [estiloId, setEstiloId] = useState("");
   const [abv, setAbv] = useState("");
   const [preco, setPreco] = useState("");
   const [descricao, setDescricao] = useState("");
-  
+
   // Controle de Edição
   const [editingId, setEditingId] = useState(null);
-  
+
   // Feedback
   const [message, setMessage] = useState({ text: "", type: "" });
 
@@ -41,8 +41,8 @@ const CrudCervejas = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    
-    // Validações
+
+
     if (!nome.trim()) {
       showFeedback("O nome da cerveja é obrigatório.", "danger");
       return;
@@ -74,12 +74,10 @@ const CrudCervejas = () => {
 
     try {
       if (editingId) {
-        // Atualiza
         await updateDocument("cervejas", editingId, data);
         showFeedback("Cerveja atualizada com sucesso!");
         setEditingId(null);
       } else {
-        // Cria
         await addDocument("cervejas", data);
         showFeedback("Cerveja cadastrada com sucesso!");
       }
@@ -137,7 +135,7 @@ const CrudCervejas = () => {
   return (
     <div className="admin-layout">
       <div className="container">
-        
+
         {/* Cabeçalho da Página */}
         <div className="admin-header">
           <div className="admin-title-area">
@@ -146,12 +144,7 @@ const CrudCervejas = () => {
           </div>
         </div>
 
-        {/* Feedback */}
-        {message.text && (
-          <div className={`alert ${message.type === "danger" ? "alert-danger" : "alert-success"}`}>
-            <span>{message.type === "danger" ? "⚠️" : "✅"} {message.text}</span>
-          </div>
-        )}
+
 
         <div className="crud-grid">
           {/* Listagem (Read) */}
@@ -224,7 +217,14 @@ const CrudCervejas = () => {
               {editingId ? "Editar Receita" : "Cadastrar Receita"}
             </h2>
 
-            <form onSubmit={handleSave}>
+            {/* Feedback */}
+            {message.text && (
+              <div className={`alert ${message.type === "danger" ? "alert-danger" : "alert-success"}`}>
+                <span>{message.type === "danger" ? "⚠️" : "✅"} {message.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSave} noValidate>
               <div className="form-group">
                 <label className="form-label" htmlFor="beer-name">Nome da Cerveja</label>
                 <input

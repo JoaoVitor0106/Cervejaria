@@ -19,14 +19,8 @@ const Relatorio = () => {
     };
   }, []);
 
-  // ==========================================================================
-  // 🔍 RELATIONAL JOIN (Lotes + Cervejas + Estilos)
-  // ==========================================================================
   const joinedData = batches.map(batch => {
-    // 1º JOIN: Encontra a Cerveja correspondente
     const beer = beers.find(b => b.id === batch.cervejaId) || null;
-    
-    // 2º JOIN: Encontra o Estilo correspondente baseado na Cerveja
     const style = beer ? styles.find(s => s.id === beer.estiloId) : null;
 
     return {
@@ -45,9 +39,6 @@ const Relatorio = () => {
     };
   });
 
-  // ==========================================================================
-  // 📊 INDICADORES E AGRUPAMENTOS (MÉTRICAS DO RELATÓRIO)
-  // ==========================================================================
   const totalVolume = joinedData.reduce((acc, curr) => acc + curr.quantidade, 0);
   const totalReceitaEst = joinedData.reduce((acc, curr) => acc + (curr.quantidade * curr.cervejaPreco), 0);
   const totalProntos = joinedData.filter(b => b.status === "Pronto").length;
@@ -65,7 +56,7 @@ const Relatorio = () => {
   return (
     <div className="admin-layout">
       <div className="container">
-        
+
         {/* Cabeçalho */}
         <div className="admin-header">
           <div className="admin-title-area">
