@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
-import { subscribeToAuth } from "../firebase";
+import { subscribeToAuth, isAdminUser } from "../firebase";
 
-const ProtectedRoute = ({ children }) => {
+// ProtectedRoute para rotas de ADMIN apenas
+const ProtectedRoute = ({ children, requireAdmin = true }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -50,8 +51,14 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
+  // Não está logado
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Rota de admin mas usuário não é admin
+  if (requireAdmin && !isAdminUser(user)) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

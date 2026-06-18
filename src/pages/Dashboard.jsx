@@ -6,6 +6,7 @@ const Dashboard = () => {
   const [beersCount, setBeersCount] = useState(0);
   const [stylesCount, setStylesCount] = useState(0);
   const [activeBatchesCount, setActiveBatchesCount] = useState(0);
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -24,10 +25,16 @@ const Dashboard = () => {
       setActiveBatchesCount(active);
     });
 
+    const unsubscribeOrders = subscribeToCollection("pedidos", (data) => {
+      const pending = data.filter(p => p.status === "pendente").length;
+      setPendingOrdersCount(pending);
+    });
+
     return () => {
       unsubscribeBeers();
       unsubscribeStyles();
       unsubscribeBatches();
+      unsubscribeOrders();
     };
   }, []);
 
@@ -72,6 +79,16 @@ const Dashboard = () => {
             </div>
             <div className="metric-icon-box green">🧪</div>
           </div>
+
+          <div className="metric-card">
+            <div className="metric-info">
+              <h3>Pedidos Pendentes</h3>
+              <div className="metric-value" style={{ color: pendingOrdersCount > 0 ? "var(--color-warning)" : "inherit" }}>
+                {pendingOrdersCount}
+              </div>
+            </div>
+            <div className="metric-icon-box amber">📦</div>
+          </div>
         </div>
 
         {/* Ações Rápidas */}
@@ -102,6 +119,12 @@ const Dashboard = () => {
             <div className="action-card-icon">📊</div>
             <div className="action-card-title">Relatório JOIN</div>
             <p className="action-card-desc">Visualize o relatório unificado unindo Lotes, Receitas e Estilos com métricas consolidadas.</p>
+          </div>
+
+          <div className="action-card" onClick={() => navigate("/admin/pedidos")}>
+            <div className="action-card-icon">📦</div>
+            <div className="action-card-title">Painel de Pedidos</div>
+            <p className="action-card-desc">Gerencie pedidos de clientes em tempo real, atualize status e acompanhe o faturamento.</p>
           </div>
         </div>
       </div>

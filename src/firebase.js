@@ -4,7 +4,10 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  updateProfile
 } from "firebase/auth";
 import {
   getFirestore,
@@ -14,7 +17,9 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  onSnapshot
+  onSnapshot,
+  setDoc,
+  getDoc
 } from "firebase/firestore";
 
 // Configuração do Firebase
@@ -58,26 +63,130 @@ export const loginUser = async (email, password) => {
   if (useMock) {
     // Login simulado para desenvolvimento
     if (email === "hank@schrader.com" && password === "mineral") {
-      const mockUser = { email, uid: "hank_uid_123", displayName: "Hank Schrader" };
+      const mockUser = { email, uid: "hank_uid_123", displayName: "Hank Schrader", role: "admin" };
       localStorage.setItem("brew_session", JSON.stringify(mockUser));
+      window.dispatchEvent(new Event("brew_auth_changed"));
       return mockUser;
     }
     if (email && password.length >= 6) {
-      const mockUser = { email, uid: "user_" + Date.now(), displayName: email.split('@')[0] };
-      localStorage.setItem("brew_session", JSON.stringify(mockUser));
-      return mockUser;
+      // Verifica se já existe usuário com esse email
+      const users = JSON.parse(localStorage.getItem("brew_users") || "[]");
+      const existing = users.find(u => u.email === email);
+      if (existing) {
+        if (existing.password !== password) throw new Error("Senha incorreta.");
+        const sessionUser = { email: existing.email, uid: existing.uid, displayName: existing.displayName, role: existing.role || "customer" };
+        localStorage.setItem("brew_session", JSON.stringify(sessionUser));
+        window.dispatchEvent(new Event("brew_auth_changed"));
+        return sessionUser;
+      }
+      throw new Error("Usuário não encontrado. Registre-se primeiro.");
     }
     throw new Error("Credenciais inválidas! Tente hank@schrader.com / mineral");
   } else {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     await seedDatabase();
-    return userCredential.user;
+    // Busca o role do usuário
+    const userData = await getUserData(userCredential.user.uid);
+    return { ...userCredential.user, role: userData?.role || "customer" };
   }
+};
+
+export const registerUser = async (email, password, displayName) => {
+  if (useMock) {
+    const users = JSON.parse(localStorage.getItem("brew_users") || "[]");
+    if (users.find(u => u.email === email)) {
+      throw new Error("Este e-mail já está em uso.");
+    }
+    const newUser = {
+      uid: "user_" + Date.now(),
+      email,
+      password,
+      displayName: displayName || email.split('@')[0],
+      role: "customer",
+      createdAt: new Date().toISOString()
+    };
+    users.push(newUser);
+    localStorage.setItem("brew_users", JSON.stringify(users));
+    const sessionUser = { email: newUser.email, uid: newUser.uid, displayName: newUser.displayName, role: newUser.role };
+    localStorage.setItem("brew_session", JSON.stringify(sessionUser));
+    window.dispatchEvent(new Event("brew_auth_changed"));
+    return sessionUser;
+  } else {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    await updateProfile(userCredential.user, { displayName });
+    // Cria o documento de usuário com role "customer"
+    await setDoc(doc(db, "users", userCredential.user.uid), {
+      email,
+      displayName,
+      role: "customer",
+      createdAt: new Date().toISOString()
+    });
+    return { ...userCredential.user, role: "customer" };
+  }
+};
+
+export const loginWithGoogle = async () => {
+  if (useMock) {
+    const mockGoogleUser = {
+      uid: "google_user_" + Date.now(),
+      email: "cliente.google@gmail.com",
+      displayName: "Cliente Google (Simulado)",
+      role: "customer",
+      provider: "google"
+    };
+    // Salva como usuário mock
+    const users = JSON.parse(localStorage.getItem("brew_users") || "[]");
+    if (!users.find(u => u.uid === mockGoogleUser.uid)) {
+      users.push({ ...mockGoogleUser, password: null });
+      localStorage.setItem("brew_users", JSON.stringify(users));
+    }
+    localStorage.setItem("brew_session", JSON.stringify(mockGoogleUser));
+    window.dispatchEvent(new Event("brew_auth_changed"));
+    return mockGoogleUser;
+  } else {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+    // Verifica se já tem perfil no Firestore
+    const userDocRef = doc(db, "users", user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    let role = "customer";
+    if (!userDocSnap.exists()) {
+      // Primeiro login com Google: cria o perfil
+      await setDoc(userDocRef, {
+        email: user.email,
+        displayName: user.displayName,
+        role: "customer",
+        provider: "google",
+        createdAt: new Date().toISOString()
+      });
+    } else {
+      role = userDocSnap.data().role || "customer";
+    }
+    return { ...user, role };
+  }
+};
+
+export const getUserData = async (uid) => {
+  if (useMock) {
+    const users = JSON.parse(localStorage.getItem("brew_users") || "[]");
+    return users.find(u => u.uid === uid) || null;
+  } else {
+    const userDocRef = doc(db, "users", uid);
+    const snap = await getDoc(userDocRef);
+    return snap.exists() ? snap.data() : null;
+  }
+};
+
+export const isAdminUser = (user) => {
+  if (!user) return false;
+  return user.role === "admin";
 };
 
 export const logoutUser = async () => {
   if (useMock) {
     localStorage.removeItem("brew_session");
+    window.dispatchEvent(new Event("brew_auth_changed"));
     return true;
   } else {
     await signOut(auth);
@@ -89,14 +198,43 @@ export const subscribeToAuth = (callback) => {
   if (useMock) {
     // Monitora a sessão local simulada
     const checkSession = () => {
-      const session = localStorage.getItem("brew_session");
-      callback(session ? JSON.parse(session) : null);
+      const sessionRaw = localStorage.getItem("brew_session");
+      if (!sessionRaw) {
+        callback(null);
+        return;
+      }
+      const session = JSON.parse(sessionRaw);
+      // Se a sessão não tem role, busca nos usuários salvos
+      if (!session.role) {
+        const users = JSON.parse(localStorage.getItem("brew_users") || "[]");
+        const found = users.find(u => u.uid === session.uid || u.email === session.email);
+        session.role = found?.role || "customer";
+        // Atualiza a sessão com o role correto
+        localStorage.setItem("brew_session", JSON.stringify(session));
+      }
+      callback(session);
     };
     checkSession();
     window.addEventListener("storage", checkSession);
-    return () => window.removeEventListener("storage", checkSession);
+    window.addEventListener("brew_auth_changed", checkSession);
+    return () => {
+      window.removeEventListener("storage", checkSession);
+      window.removeEventListener("brew_auth_changed", checkSession);
+    };
   } else {
-    return onAuthStateChanged(auth, callback);
+    return onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Busca o role do usuário no Firestore
+        try {
+          const userData = await getUserData(firebaseUser.uid);
+          callback({ ...firebaseUser, role: userData?.role || "customer" });
+        } catch {
+          callback({ ...firebaseUser, role: "customer" });
+        }
+      } else {
+        callback(null);
+      }
+    });
   }
 };
 
@@ -120,6 +258,10 @@ const defaultData = {
     { id: "1", codigoLote: "LOTE-001", cervejaId: "1", dataInicio: "2026-05-15", quantidade: "500", status: "Pronto" },
     { id: "2", codigoLote: "LOTE-002", cervejaId: "2", dataInicio: "2026-05-28", quantidade: "300", status: "Fermentando" },
     { id: "3", codigoLote: "LOTE-003", cervejaId: "1", dataInicio: "2026-06-01", quantidade: "450", status: "Condicionando" }
+  ],
+  pedidos: [],
+  users: [
+    { uid: "hank_uid_123", email: "hank@schrader.com", displayName: "Hank Schrader", role: "admin", password: "mineral" }
   ]
 };
 
@@ -130,11 +272,35 @@ const initMockData = () => {
       localStorage.setItem(`brew_${key}`, JSON.stringify(defaultData[key]));
     }
   });
+
+  // Garante que o usuário admin (Hank) sempre exista no brew_users com role correto
+  const hankDefault = { uid: "hank_uid_123", email: "hank@schrader.com", displayName: "Hank Schrader", role: "admin", password: "mineral" };
+  const users = JSON.parse(localStorage.getItem("brew_users") || "[]");
+  const hankIdx = users.findIndex(u => u.uid === "hank_uid_123" || u.email === "hank@schrader.com");
+  if (hankIdx === -1) {
+    users.push(hankDefault);
+    localStorage.setItem("brew_users", JSON.stringify(users));
+  } else if (users[hankIdx].role !== "admin") {
+    // Corrige se o role estiver errado
+    users[hankIdx].role = "admin";
+    localStorage.setItem("brew_users", JSON.stringify(users));
+  }
+
+  // Corrige a sessão ativa do Hank se o role estiver ausente ou errado
+  const sessionRaw = localStorage.getItem("brew_session");
+  if (sessionRaw) {
+    const session = JSON.parse(sessionRaw);
+    if ((session.uid === "hank_uid_123" || session.email === "hank@schrader.com") && session.role !== "admin") {
+      session.role = "admin";
+      localStorage.setItem("brew_session", JSON.stringify(session));
+    }
+  }
 };
 
 if (useMock) {
   initMockData();
 }
+
 
 
 export const addDocument = async (colName, data) => {

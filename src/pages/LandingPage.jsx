@@ -1,41 +1,59 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { Link } from "react-router-dom";
 import { subscribeToCollection, addDocument } from "../firebase";
+import { useCart } from "../context/CartContext";
+
+// Card de cerveja isolado e memorizado — não re-renderiza quando o formulário de contato muda
+const BeerCard = memo(({ beer, styleName, onAddToCart }) => (
+  <div className="beer-card">
+    <div className="beer-card-body">
+      <span className="beer-style-badge">{styleName}</span>
+      <h3 className="beer-card-title">{beer.nome}</h3>
+      <p className="beer-description">{beer.descricao}</p>
+      <div className="beer-meta">
+        <div className="beer-abv">Teor: <span>{beer.abv}% ABV</span></div>
+        <div className="beer-price">R$ {parseFloat(beer.preco).toFixed(2)}</div>
+      </div>
+      <button
+        className="btn-add-cart"
+        onClick={() => onAddToCart(beer)}
+        id={`add-cart-${beer.id}`}
+      >
+        🛒 Adicionar ao Carrinho
+      </button>
+    </div>
+  </div>
+));
 
 const LandingPage = () => {
   const [beers, setBeers] = useState([]);
   const [styles, setStyles] = useState([]);
+  const { addToCart } = useCart();
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactMessage, setContactMessage] = useState("");
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
 
-  useEffect(() => {
-    // Escuta em tempo real cervejas e estilos
-    const unsubscribeBeers = subscribeToCollection("cervejas", (data) => {
-      setBeers(data);
-    });
-    
-    const unsubscribeStyles = subscribeToCollection("estilos", (data) => {
-      setStyles(data);
-    });
+  // Mapa de estilos para lookup O(1) em vez de .find() a cada render
+  const stylesMap = useMemo(() => {
+    const map = {};
+    styles.forEach(s => { map[s.id] = s.nomeEstilo; });
+    return map;
+  }, [styles]);
 
-    return () => {
-      unsubscribeBeers();
-      unsubscribeStyles();
-    };
-  }, []);
+  const getStyleName = useCallback(
+    (styleId) => stylesMap[styleId] || "Estilo Especial",
+    [stylesMap]
+  );
 
-  const handleContactSubmit = async (e) => {
+  const handleContactSubmit = useCallback(async (e) => {
     e.preventDefault();
     setFormError("");
-    
     if (!contactName || !contactEmail || !contactMessage) {
       setFormError("Todos os campos do formulário são obrigatórios.");
       return;
     }
-
     try {
       await addDocument("contatos", {
         nome: contactName,
@@ -43,25 +61,22 @@ const LandingPage = () => {
         mensagem: contactMessage,
         dataEnvio: new Date().toISOString()
       });
-      
       setFormSubmitted(true);
       setContactName("");
       setContactEmail("");
       setContactMessage("");
-      
-      // Limpa mensagem de sucesso após 5 segundos
       setTimeout(() => setFormSubmitted(false), 5000);
     } catch (err) {
       console.error(err);
       setFormError("Erro ao enviar mensagem. Tente novamente.");
     }
-  };
+  }, [contactName, contactEmail, contactMessage]);
 
-  // Retorna o nome do estilo de cerveja correspondente
-  const getStyleName = (styleId) => {
-    const style = styles.find(s => s.id === styleId);
-    return style ? style.nomeEstilo : "Estilo Especial";
-  };
+  useEffect(() => {
+    const unsubscribeBeers  = subscribeToCollection("cervejas", setBeers);
+    const unsubscribeStyles = subscribeToCollection("estilos",  setStyles);
+    return () => { unsubscribeBeers(); unsubscribeStyles(); };
+  }, []);
 
   return (
     <div id="home">
@@ -150,23 +165,12 @@ const LandingPage = () => {
               </div>
             ) : (
               beers.map((beer) => (
-                <div key={beer.id} className="beer-card">
-                  <div className="beer-card-body">
-                    <span className="beer-style-badge">
-                      {getStyleName(beer.estiloId)}
-                    </span>
-                    <h3 className="beer-card-title">{beer.nome}</h3>
-                    <p className="beer-description">{beer.descricao}</p>
-                    <div className="beer-meta">
-                      <div className="beer-abv">
-                        Teor: <span>{beer.abv}% ABV</span>
-                      </div>
-                      <div className="beer-price">
-                        R$ {parseFloat(beer.preco).toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <BeerCard
+                  key={beer.id}
+                  beer={beer}
+                  styleName={getStyleName(beer.estiloId)}
+                  onAddToCart={addToCart}
+                />
               ))
             )}
           </div>
